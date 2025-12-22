@@ -57,7 +57,7 @@ function handleFileUpload(event) {
   reader.readAsText(file);
 }
 
-// Detect large input changes (likely paste)
+// Detect input changes (paste or typing)
 function handleInputChange(event) {
   const input = event.target;
   const newValue = input.value || input.textContent || '';
@@ -71,7 +71,22 @@ function handleInputChange(event) {
     if (changeSize > 20) {
       const newText = newValue.substring(lastLength);
       scanAndAlert(newText, 'paste');
+    } else {
+      // Small change - likely typing, scan the entire current text
+      // Use debounce to avoid scanning on every keystroke
+      clearTimeout(input.dataset.scanTimeout);
+      input.dataset.scanTimeout = setTimeout(() => {
+        scanAndAlert(newValue, 'typing');
+      }, 500); // Wait 500ms after user stops typing
     }
+  } else {
+    // First input or small text - scan everything
+    clearTimeout(input.dataset.scanTimeout);
+    input.dataset.scanTimeout = setTimeout(() => {
+      if (newValue.length > 10) { // Only scan if meaningful length
+        scanAndAlert(newValue, 'typing');
+      }
+    }, 500);
   }
   
   input.dataset.lastLength = newValue.length.toString();
@@ -138,6 +153,33 @@ function showInlineSuggestions(scanId, risks, content, source, filename) {
       z-index: 1000000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
+    
+    // Add CSS animations for underlines
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes ai-guardrail-pulse {
+        0%, 100% {
+          opacity: 1;
+          transform: scaleY(1);
+        }
+        50% {
+          opacity: 0.7;
+          transform: scaleY(1.1);
+        }
+      }
+      @keyframes ai-guardrail-tooltip-fade {
+        from {
+          opacity: 0;
+          transform: translateY(-100%) translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(-100%) translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    
     document.body.appendChild(overlay);
   }
 
@@ -178,45 +220,57 @@ function showInlineSuggestions(scanId, risks, content, source, filename) {
     
     document.body.removeChild(measureEl);
 
-    // Create underline element
+    // Create underline element (positioned BELOW text, not above)
     const underline = document.createElement('div');
     underline.className = 'ai-guardrail-underline';
     underline.dataset.riskIndex = index;
     underline.dataset.scanId = scanId;
+    
+    // Calculate line height for proper positioning
+    const lineHeight = parseFloat(window.getComputedStyle(inputElement).lineHeight) || 20;
+    const paddingTop = parseFloat(window.getComputedStyle(inputElement).paddingTop) || 0;
+    const textTop = paddingTop + (linesBefore * lineHeight);
+    
     underline.style.cssText = `
       position: absolute;
       left: ${beforeWidth}px;
-      top: ${linesBefore * 20}px;
+      top: ${textTop + lineHeight - 2}px;
       width: ${riskWidth}px;
-      height: 2px;
-      background: #dc2626;
-      border-bottom: 2px solid #dc2626;
+      height: 3px;
+      background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+      border-bottom: 3px solid #f59e0b;
       border-bottom-style: wavy;
       pointer-events: auto;
       cursor: pointer;
       z-index: 1000001;
+      animation: ai-guardrail-pulse 2s ease-in-out infinite;
+      box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
     `;
 
-    // Create tooltip
+    // Create tooltip (positioned above underline)
     const tooltip = document.createElement('div');
     tooltip.className = 'ai-guardrail-tooltip';
     tooltip.dataset.riskIndex = index;
+    const tooltipTop = textTop + lineHeight - 2 - 8; // Position above underline
     tooltip.style.cssText = `
       position: absolute;
       left: ${beforeWidth}px;
-      bottom: 100%;
+      top: ${tooltipTop}px;
+      transform: translateY(-100%);
       margin-bottom: 8px;
-      background: #1f2937;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
       color: white;
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 10px 14px;
+      border-radius: 8px;
       font-size: 12px;
       white-space: nowrap;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
       pointer-events: auto;
       z-index: 1000002;
       display: none;
-      min-width: 200px;
+      min-width: 220px;
+      border: 1px solid #374151;
+      animation: ai-guardrail-tooltip-fade 0.2s ease-out;
     `;
     
     const placeholder = detector.getPlaceholder(risk.type, index + 1);
