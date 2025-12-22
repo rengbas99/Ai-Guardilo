@@ -103,7 +103,7 @@ function scanAndAlert(content, source, filename = null) {
   });
 }
 
-// Show floating pill notification
+// Show floating pill notification with preview (Grammarly-style)
 function showPill(scanId, risks, content, source, filename) {
   // Remove existing pill if any
   const existingPill = document.getElementById('ai-guardrail-pill');
@@ -121,7 +121,39 @@ function showPill(scanId, risks, content, source, filename) {
   const fullRisks = detector.scan(fullText);
   console.log('🛡️ AI Guardrail: Full text risks', fullRisks.length, 'Full text length:', fullText.length);
 
-  // Create pill element
+  // Generate redacted text for preview
+  const redacted = detector.redact(fullText, fullRisks);
+
+  // Create preview text with highlights showing changes
+  const createPreviewText = (text, risks) => {
+    // Sort risks by position (reverse order for safe replacement)
+    const sortedRisks = [...risks].sort((a, b) => b.start - a.start);
+    let preview = text;
+    const counters = {
+      postcode: 0,
+      nhs_number: 0,
+      email: 0,
+      name: 0
+    };
+    
+    for (const risk of sortedRisks) {
+      counters[risk.type]++;
+      const placeholder = detector.getPlaceholder(risk.type, counters[risk.type]);
+      const highlighted = `<mark style="background: #fef3c7; color: #92400e; padding: 2px 4px; border-radius: 3px; font-weight: 600;">${risk.text}</mark>`;
+      const replacement = `<span style="background: #d1fae5; color: #065f46; padding: 2px 4px; border-radius: 3px; font-weight: 600;">${placeholder}</span>`;
+      
+      // Show original highlighted, then replacement
+      preview = preview.substring(0, risk.start) + 
+                highlighted + ' → ' + replacement + 
+                preview.substring(risk.end);
+    }
+    
+    return preview;
+  };
+
+  const previewHTML = createPreviewText(fullText, fullRisks);
+
+  // Create pill element with preview
   const pill = document.createElement('div');
   pill.id = 'ai-guardrail-pill';
   pill.innerHTML = `
@@ -137,40 +169,64 @@ function showPill(scanId, risks, content, source, filename) {
       z-index: 1000000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px;
-      max-width: 400px;
+      max-width: 500px;
       animation: slideIn 0.3s ease-out;
     ">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
         <span style="font-size: 20px;">⚠️</span>
         <strong style="font-size: 16px;">${fullRisks.length} risk${fullRisks.length > 1 ? 's' : ''} detected</strong>
       </div>
+      
       <div style="font-size: 12px; opacity: 0.9; margin-bottom: 12px;">
         ${filename ? `In "${filename.length > 30 ? filename.substring(0, 30) + '...' : filename}"` : `From ${source}`}
       </div>
+      
       <div style="font-size: 11px; opacity: 0.8; margin-bottom: 12px;">
         Types: ${[...new Set(fullRisks.map(r => r.type))].join(', ')}
       </div>
-      <div style="display: flex; gap: 8px;">
-        <button id="ai-guardrail-fix" style="
+
+      <!-- Preview Section -->
+      <div id="ai-guardrail-preview" style="
+        background: white;
+        color: #111827;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+        font-size: 12px;
+        line-height: 1.6;
+      ">
+        <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">Preview Changes:</div>
+        <div style="color: #6b7280; word-wrap: break-word;">${previewHTML}</div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div id="ai-guardrail-actions" style="display: flex; gap: 8px;">
+        <button id="ai-guardrail-accept" style="
           flex: 1;
-          background: white;
-          color: #dc2626;
+          background: #10b981;
+          color: white;
           border: none;
-          padding: 8px 16px;
+          padding: 10px 16px;
           border-radius: 6px;
           font-weight: 600;
           cursor: pointer;
           font-size: 13px;
-        ">Fix</button>
-        <button id="ai-guardrail-dismiss" style="
+          transition: all 0.2s;
+        ">✓ Accept</button>
+        <button id="ai-guardrail-reject" style="
+          flex: 1;
           background: rgba(255,255,255,0.2);
           color: white;
           border: none;
-          padding: 8px 16px;
+          padding: 10px 16px;
           border-radius: 6px;
+          font-weight: 600;
           cursor: pointer;
           font-size: 13px;
-        ">Dismiss</button>
+          transition: all 0.2s;
+        ">✗ Reject</button>
       </div>
     </div>
     <style>
@@ -184,25 +240,29 @@ function showPill(scanId, risks, content, source, filename) {
           opacity: 1;
         }
       }
+      #ai-guardrail-accept:hover {
+        background: #059669 !important;
+        transform: scale(1.02);
+      }
+      #ai-guardrail-reject:hover {
+        background: rgba(255,255,255,0.3) !important;
+      }
     </style>
   `;
 
   document.body.appendChild(pill);
 
-  // Store data for fix button - use full text and full risks
+  // Store data
   pill.dataset.scanId = scanId;
   pill.dataset.risks = JSON.stringify(fullRisks);
   pill.dataset.content = fullText;
-  pill.dataset.inputElement = inputElement ? 'textarea' : (contentEditable ? 'contenteditable' : 'none');
+  pill.dataset.redacted = redacted;
 
-  // Fix button handler
-  const fixBtn = pill.querySelector('#ai-guardrail-fix');
-  fixBtn.addEventListener('click', () => {
+  // Accept button handler
+  const acceptBtn = pill.querySelector('#ai-guardrail-accept');
+  acceptBtn.addEventListener('click', () => {
     const fullText = pill.dataset.content;
-    const fullRisks = JSON.parse(pill.dataset.risks);
-    const redacted = detector.redact(fullText, fullRisks);
-    
-    console.log('🛡️ AI Guardrail: Redacting text', { original: fullText.substring(0, 100), redacted: redacted.substring(0, 100) });
+    const redacted = pill.dataset.redacted;
     
     // Find the input field again (in case DOM changed)
     const textarea = document.querySelector('textarea[data-id], textarea#prompt-textarea');
@@ -210,66 +270,49 @@ function showPill(scanId, risks, content, source, filename) {
     const inputElement = textarea || contentEditable;
     
     if (inputElement) {
-      // Replace text in input field (like Grammarly)
+      // Replace text in input field
       if (textarea) {
         textarea.value = redacted;
-        // Trigger input event so ChatGPT recognizes the change
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.dispatchEvent(new Event('change', { bubbles: true }));
       } else if (contentEditable) {
         contentEditable.textContent = redacted;
-        // Trigger input event
         contentEditable.dispatchEvent(new Event('input', { bubbles: true }));
-        // Also update innerHTML for contenteditable
         contentEditable.innerHTML = redacted.replace(/\n/g, '<br>');
       }
       console.log('🛡️ AI Guardrail: Text replaced in input field');
     }
     
-    // Also copy to clipboard
-    navigator.clipboard.writeText(redacted).then(() => {
-      // Update button to show success
-      fixBtn.textContent = '✓ Fixed!';
-      fixBtn.style.background = '#10b981';
-      fixBtn.style.color = 'white';
-      
-      // Log fix action
-      updateLog(scanId, 'fix').catch(console.error);
-      
-      // Auto-dismiss after 2 seconds
-      setTimeout(() => {
-        pill.remove();
-      }, 2000);
-    }).catch(err => {
-      console.error('AI Guardrail: Failed to copy to clipboard', err);
-      // Still show success if input was updated
-      if (inputElement) {
-        fixBtn.textContent = '✓ Fixed!';
-        fixBtn.style.background = '#10b981';
-        fixBtn.style.color = 'white';
-        setTimeout(() => {
-          pill.remove();
-        }, 2000);
-      } else {
-        fixBtn.textContent = 'Error';
-      }
-    });
+    // Copy to clipboard
+    navigator.clipboard.writeText(redacted).catch(console.error);
+    
+    // Update button to show success
+    acceptBtn.textContent = '✓ Accepted!';
+    acceptBtn.style.background = '#059669';
+    
+    // Log fix action
+    updateLog(scanId, 'fix').catch(console.error);
+    
+    // Auto-dismiss after 1.5 seconds
+    setTimeout(() => {
+      pill.remove();
+    }, 1500);
   });
 
-  // Dismiss button handler
-  const dismissBtn = pill.querySelector('#ai-guardrail-dismiss');
-  dismissBtn.addEventListener('click', () => {
+  // Reject button handler
+  const rejectBtn = pill.querySelector('#ai-guardrail-reject');
+  rejectBtn.addEventListener('click', () => {
     updateLog(scanId, 'dismiss').catch(console.error);
     pill.remove();
   });
 
-  // Auto-dismiss after 10 seconds
+  // Auto-dismiss after 15 seconds (longer for preview)
   setTimeout(() => {
     if (document.body.contains(pill)) {
       updateLog(scanId, 'dismiss').catch(console.error);
       pill.remove();
     }
-  }, 10000);
+  }, 15000);
 }
 
 // Log risk to chrome.storage.local
