@@ -94,13 +94,234 @@ function scanAndAlert(content, source, filename = null) {
 
   const scanId = generateScanId();
   
-  // Show floating pill
+  // Show inline underlines (Grammarly-style) AND floating pill
+  showInlineSuggestions(scanId, risks, content, source, filename);
   showPill(scanId, risks, content, source, filename);
   
   // Log to storage (async, don't block)
   logRisk(scanId, risks, source, filename).catch(err => {
     console.error('AI Guardrail: Failed to log risk', err);
   });
+}
+
+// Show Grammarly-style inline suggestions with red underlines
+function showInlineSuggestions(scanId, risks, content, source, filename) {
+  // Get the input field
+  const textarea = document.querySelector('textarea[data-id], textarea#prompt-textarea');
+  const contentEditable = document.querySelector('[contenteditable="true"]');
+  const inputElement = textarea || contentEditable;
+  
+  if (!inputElement) {
+    console.log('🛡️ AI Guardrail: No input element found for inline suggestions');
+    return;
+  }
+
+  const fullText = inputElement.value || inputElement.textContent || '';
+  const fullRisks = detector.scan(fullText);
+  
+  if (fullRisks.length === 0) {
+    return;
+  }
+
+  // Remove existing underlines
+  removeInlineSuggestions();
+
+  // Create overlay container for underlines and tooltips
+  const overlayId = 'ai-guardrail-overlay';
+  let overlay = document.getElementById(overlayId);
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.style.cssText = `
+      position: absolute;
+      pointer-events: none;
+      z-index: 1000000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  // Get input element position
+  const rect = inputElement.getBoundingClientRect();
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+  // Position overlay to match input field
+  overlay.style.top = (rect.top + scrollTop) + 'px';
+  overlay.style.left = (rect.left + scrollLeft) + 'px';
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+
+  // Create underline elements for each risk
+  fullRisks.forEach((risk, index) => {
+    // Calculate position of risk in text
+    const textBefore = fullText.substring(0, risk.start);
+    const textRisk = fullText.substring(risk.start, risk.end);
+    
+    // Create a temporary element to measure text width
+    const measureEl = document.createElement('span');
+    measureEl.style.visibility = 'hidden';
+    measureEl.style.position = 'absolute';
+    measureEl.style.whiteSpace = 'pre-wrap';
+    measureEl.style.font = window.getComputedStyle(inputElement).font;
+    measureEl.style.padding = window.getComputedStyle(inputElement).padding;
+    measureEl.textContent = textBefore;
+    document.body.appendChild(measureEl);
+    
+    const beforeWidth = measureEl.offsetWidth;
+    measureEl.textContent = textRisk;
+    const riskWidth = measureEl.offsetWidth;
+    measureEl.textContent = textBefore + textRisk;
+    const beforeHeight = measureEl.offsetHeight;
+    measureEl.textContent = textBefore.substring(0, Math.max(0, textBefore.lastIndexOf('\n')));
+    const linesBefore = measureEl.textContent.split('\n').length - 1;
+    
+    document.body.removeChild(measureEl);
+
+    // Create underline element
+    const underline = document.createElement('div');
+    underline.className = 'ai-guardrail-underline';
+    underline.dataset.riskIndex = index;
+    underline.dataset.scanId = scanId;
+    underline.style.cssText = `
+      position: absolute;
+      left: ${beforeWidth}px;
+      top: ${linesBefore * 20}px;
+      width: ${riskWidth}px;
+      height: 2px;
+      background: #dc2626;
+      border-bottom: 2px solid #dc2626;
+      border-bottom-style: wavy;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 1000001;
+    `;
+
+    // Create tooltip
+    const tooltip = document.createElement('div');
+    tooltip.className = 'ai-guardrail-tooltip';
+    tooltip.dataset.riskIndex = index;
+    tooltip.style.cssText = `
+      position: absolute;
+      left: ${beforeWidth}px;
+      bottom: 100%;
+      margin-bottom: 8px;
+      background: #1f2937;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      pointer-events: auto;
+      z-index: 1000002;
+      display: none;
+      min-width: 200px;
+    `;
+    
+    const placeholder = detector.getPlaceholder(risk.type, index + 1);
+    tooltip.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 4px;">PII Detected: ${risk.type}</div>
+      <div style="opacity: 0.9; margin-bottom: 8px;">${risk.text} → ${placeholder}</div>
+      <div style="display: flex; gap: 6px;">
+        <button class="ai-guardrail-accept-inline" style="
+          flex: 1;
+          background: #10b981;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          cursor: pointer;
+          font-weight: 600;
+        ">Accept</button>
+        <button class="ai-guardrail-dismiss-inline" style="
+          flex: 1;
+          background: #6b7280;
+          color: white;
+          border: none;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          cursor: pointer;
+          font-weight: 600;
+        ">Dismiss</button>
+      </div>
+    `;
+
+    // Show tooltip on hover
+    underline.addEventListener('mouseenter', () => {
+      tooltip.style.display = 'block';
+    });
+    
+    underline.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
+
+    // Accept button in tooltip
+    const acceptBtn = tooltip.querySelector('.ai-guardrail-accept-inline');
+    acceptBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      acceptInlineSuggestion(scanId, risk, fullText, fullRisks, inputElement);
+    });
+
+    // Dismiss button in tooltip
+    const dismissBtn = tooltip.querySelector('.ai-guardrail-dismiss-inline');
+    dismissBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeInlineSuggestions();
+    });
+
+    overlay.appendChild(underline);
+    overlay.appendChild(tooltip);
+  });
+}
+
+// Accept a single inline suggestion
+function acceptInlineSuggestion(scanId, risk, fullText, allRisks, inputElement) {
+  // Redact only this specific risk
+  const redacted = detector.redact(fullText, [risk]);
+  
+  // Update input field
+  if (inputElement.tagName === 'TEXTAREA') {
+    inputElement.value = redacted;
+    inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (inputElement.isContentEditable) {
+    inputElement.textContent = redacted;
+    inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+    inputElement.innerHTML = redacted.replace(/\n/g, '<br>');
+  }
+  
+  // Remove this underline
+  const underline = document.querySelector(`.ai-guardrail-underline[data-risk-index="${allRisks.indexOf(risk)}"]`);
+  if (underline) {
+    underline.style.display = 'none';
+  }
+  
+  // Re-scan and update remaining underlines
+  setTimeout(() => {
+    const newText = inputElement.value || inputElement.textContent || '';
+    const newRisks = detector.scan(newText);
+    if (newRisks.length > 0) {
+      showInlineSuggestions(scanId, newRisks, newText, 'paste', null);
+    } else {
+      removeInlineSuggestions();
+    }
+  }, 100);
+  
+  updateLog(scanId, 'fix').catch(console.error);
+}
+
+// Remove all inline suggestions
+function removeInlineSuggestions() {
+  const overlay = document.getElementById('ai-guardrail-overlay');
+  if (overlay) {
+    overlay.remove();
+  }
+  
+  // Also remove any remaining underlines
+  document.querySelectorAll('.ai-guardrail-underline, .ai-guardrail-tooltip').forEach(el => el.remove());
 }
 
 // Show floating pill notification with preview (Grammarly-style)
@@ -304,6 +525,7 @@ function showPill(scanId, risks, content, source, filename) {
   rejectBtn.addEventListener('click', () => {
     updateLog(scanId, 'dismiss').catch(console.error);
     pill.remove();
+    removeInlineSuggestions();
   });
 
   // Auto-dismiss after 15 seconds (longer for preview)
@@ -312,6 +534,8 @@ function showPill(scanId, risks, content, source, filename) {
       updateLog(scanId, 'dismiss').catch(console.error);
       pill.remove();
     }
+    // Also remove inline suggestions when pill dismisses
+    removeInlineSuggestions();
   }, 15000);
 }
 

@@ -209,6 +209,7 @@ export class PIIDetector {
     const risks = [];
     const words = text.split(/\s+/);
     
+    // Improved name detection: check all consecutive word pairs
     for (let i = 0; i < words.length - 1; i++) {
       const word1 = words[i].replace(/[.,!?;:()\[\]{}'"]/g, '').toLowerCase();
       const word2 = words[i + 1].replace(/[.,!?;:()\[\]{}'"]/g, '').toLowerCase();
@@ -218,12 +219,23 @@ export class PIIDetector {
       const isLastName = this.commonLastNames.has(word2);
       
       // Also check capitalized words that look like names (Title Case)
-      const isTitleCase1 = /^[A-Z][a-z]+$/.test(words[i]);
-      const isTitleCase2 = /^[A-Z][a-z]+$/.test(words[i + 1]);
+      const originalWord1 = words[i].replace(/[.,!?;:()\[\]{}'"]/g, '');
+      const originalWord2 = words[i + 1].replace(/[.,!?;:()\[\]{}'"]/g, '');
+      const isTitleCase1 = /^[A-Z][a-z]+$/.test(originalWord1);
+      const isTitleCase2 = /^[A-Z][a-z]+$/.test(originalWord2);
       
-      if ((isFirstName && isLastName) || (isTitleCase1 && isTitleCase2 && contextBoost > 0)) {
+      // More lenient detection: if first name found, check if next word is capitalized (likely last name)
+      // OR if both are title case and context suggests PII
+      const likelyNamePair = (isFirstName && isTitleCase2) || 
+                            (isFirstName && isLastName) ||
+                            (isTitleCase1 && isTitleCase2 && (contextBoost > 0 || isLastName));
+      
+      if (likelyNamePair) {
         // Find original positions in text (handle multiple occurrences)
-        const pattern = new RegExp(`\\b${this.escapeRegex(words[i])}\\s+${this.escapeRegex(words[i + 1])}\\b`, 'gi');
+        // Use word boundaries to match exact words
+        const escapedWord1 = this.escapeRegex(originalWord1);
+        const escapedWord2 = this.escapeRegex(originalWord2);
+        const pattern = new RegExp(`\\b${escapedWord1}\\s+${escapedWord2}\\b`, 'gi');
         
         // Find all matches to get correct positions
         let match;
@@ -234,7 +246,9 @@ export class PIIDetector {
             risks.push({
               text: match[0],
               type: 'name',
-              confidence: (isFirstName && isLastName) ? 0.85 + contextBoost : 0.70 + contextBoost,
+              confidence: (isFirstName && isLastName) ? 0.85 + contextBoost : 
+                         (isFirstName && isTitleCase2) ? 0.80 + contextBoost : 
+                         0.70 + contextBoost,
               start: match.index,
               end: match.index + match[0].length
             });
