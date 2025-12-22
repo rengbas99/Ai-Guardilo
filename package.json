@@ -1,0 +1,19 @@
+{
+  "name": "ai-guardrail",
+  "version": "1.0.0",
+  "description": "AI Guardrail Chrome Extension - Local PII Detection",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "keywords": ["chrome-extension", "pii-detection", "privacy"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@types/chrome": "^0.0.268"
+  },
+  "dependencies": {}
+}
