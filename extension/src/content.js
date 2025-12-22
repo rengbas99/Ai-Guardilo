@@ -114,8 +114,9 @@ function scanAndAlert(content, source, filename = null) {
   showPill(scanId, risks, content, source, filename);
   
   // Log to storage (async, don't block)
-  logRisk(scanId, risks, source, filename).catch(err => {
-    console.error('AI Guardrail: Failed to log risk', err);
+  // Silently handle errors - extension context might be invalidated
+  logRisk(scanId, risks, source, filename).catch(() => {
+    // Error already logged in logRisk function
   });
 }
 
@@ -364,7 +365,9 @@ function acceptInlineSuggestion(scanId, risk, fullText, allRisks, inputElement) 
     }
   }, 100);
   
-  updateLog(scanId, 'fix').catch(console.error);
+  updateLog(scanId, 'fix').catch(() => {
+    // Error already handled in updateLog function
+  });
 }
 
 // Remove all inline suggestions
@@ -566,7 +569,9 @@ function showPill(scanId, risks, content, source, filename) {
     acceptBtn.style.background = '#059669';
     
     // Log fix action
-    updateLog(scanId, 'fix').catch(console.error);
+    updateLog(scanId, 'fix').catch(() => {
+    // Error already handled in updateLog function
+  });
     
     // Auto-dismiss after 1.5 seconds
     setTimeout(() => {
@@ -577,7 +582,9 @@ function showPill(scanId, risks, content, source, filename) {
   // Reject button handler
   const rejectBtn = pill.querySelector('#ai-guardrail-reject');
   rejectBtn.addEventListener('click', () => {
-    updateLog(scanId, 'dismiss').catch(console.error);
+    updateLog(scanId, 'dismiss').catch(() => {
+      // Error already handled in updateLog function
+    });
     pill.remove();
     removeInlineSuggestions();
   });
@@ -585,7 +592,9 @@ function showPill(scanId, risks, content, source, filename) {
   // Auto-dismiss after 15 seconds (longer for preview)
   setTimeout(() => {
     if (document.body.contains(pill)) {
-      updateLog(scanId, 'dismiss').catch(console.error);
+      updateLog(scanId, 'dismiss').catch(() => {
+      // Error already handled in updateLog function
+    });
       pill.remove();
     }
     // Also remove inline suggestions when pill dismisses
@@ -593,9 +602,25 @@ function showPill(scanId, risks, content, source, filename) {
   }, 15000);
 }
 
+// Check if extension context is still valid
+function isExtensionContextValid() {
+  try {
+    // Try to access chrome.runtime - if it throws, context is invalidated
+    return chrome.runtime && chrome.runtime.id !== undefined;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Log risk to chrome.storage.local
 async function logRisk(scanId, risks, source, filename) {
   try {
+    // Check if extension context is still valid
+    if (!isExtensionContextValid()) {
+      console.warn('AI Guardrail: Extension context invalidated, skipping log');
+      return;
+    }
+
     const logEntry = {
       scanId,
       timestamp: Date.now(),
@@ -624,6 +649,11 @@ async function logRisk(scanId, risks, source, filename) {
     // Save
     await chrome.storage.local.set({ riskLogs: logs });
   } catch (error) {
+    // Handle extension context invalidated error gracefully
+    if (error.message && error.message.includes('Extension context invalidated')) {
+      console.warn('AI Guardrail: Extension context invalidated, skipping log');
+      return;
+    }
     // Graceful fail - don't break extension if storage fails
     console.error('AI Guardrail: Storage error', error);
   }
@@ -632,6 +662,12 @@ async function logRisk(scanId, risks, source, filename) {
 // Update log entry with user action
 async function updateLog(scanId, userAction) {
   try {
+    // Check if extension context is still valid
+    if (!isExtensionContextValid()) {
+      console.warn('AI Guardrail: Extension context invalidated, skipping log update');
+      return;
+    }
+
     const result = await chrome.storage.local.get(['riskLogs']);
     const logs = result.riskLogs || [];
 
@@ -642,6 +678,11 @@ async function updateLog(scanId, userAction) {
       await chrome.storage.local.set({ riskLogs: logs });
     }
   } catch (error) {
+    // Handle extension context invalidated error gracefully
+    if (error.message && error.message.includes('Extension context invalidated')) {
+      console.warn('AI Guardrail: Extension context invalidated, skipping log update');
+      return;
+    }
     console.error('AI Guardrail: Failed to update log', error);
   }
 }
