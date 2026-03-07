@@ -4,6 +4,10 @@ package-lock.json
 
 # Build output
 dist/
+*.zip
+
+# Backups
+extension_backup_*/
 
 # IDE
 .vscode/

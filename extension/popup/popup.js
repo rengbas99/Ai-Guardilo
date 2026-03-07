@@ -25,44 +25,61 @@ function formatDate(timestamp) {
 // Load and display stats
 async function loadStats() {
   try {
-    const result = await chrome.storage.local.get(['riskLogs']);
+    // Load both risk logs and stats
+    const result = await chrome.storage.local.get(['riskLogs', 'stats']);
     const logs = result.riskLogs || [];
+    const stats = result.stats || {
+      total: 0,
+      domains: {},
+      highRisk: 0,
+      mediumRisk: 0,
+      safeContexts: 0
+    };
     
-    const todayStart = getTodayStart();
-    const todayCount = logs.filter(log => log.timestamp >= todayStart).length;
-    const totalCount = logs.length;
-    
-    document.getElementById('today-count').textContent = todayCount;
-    document.getElementById('total-count').textContent = totalCount;
+    // Update stat cards
+    document.getElementById('high-risk').textContent = stats.highRisk || 0;
+    document.getElementById('total-count').textContent = stats.total || 0;
+    document.getElementById('medium-risk').textContent = stats.mediumRisk || 0;
+    document.getElementById('safe-contexts').textContent = stats.safeContexts || 0;
     
     // Display recent risks (last 10)
-    displayRecentRisks(logs.slice(-10).reverse());
-  } catch (error) {
-    console.error('AI Guardrail: Failed to load stats', error);
-  }
+    const highOnlyFilter = document.getElementById('high-only')?.checked || false;
+    displayRecentRisks(logs.slice(-10).reverse(), highOnlyFilter);
+  } catch (_) {}
 }
 
 // Display recent risks list
-function displayRecentRisks(risks) {
+function displayRecentRisks(risks, highOnly = false) {
   const listEl = document.getElementById('risks-list');
   
-  if (risks.length === 0) {
+  // Filter by high risk if toggle is on
+  let filteredRisks = risks;
+  if (highOnly) {
+    filteredRisks = risks.filter(r => {
+      return r.risks && r.risks.some(risk => risk.confidence >= 0.95);
+    });
+  }
+  
+  if (filteredRisks.length === 0) {
     listEl.innerHTML = '<p class="empty-state">No risks detected yet</p>';
     return;
   }
   
-  listEl.innerHTML = risks.map(risk => {
+  listEl.innerHTML = filteredRisks.map(risk => {
     const riskTypes = [...new Set(risk.risks.map(r => r.type))].join(', ');
     const source = risk.filename || risk.source;
     const action = risk.userAction ? ` • ${risk.userAction}` : '';
+    const hasHighRisk = risk.risks.some(r => r.confidence >= 0.95);
+    const riskBadge = hasHighRisk ? '<span style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 4px;">HIGH</span>' : '';
     
     return `
       <div class="risk-item">
         <div class="risk-item-header">
-          <span class="risk-types">${risk.risks.length} risk${risk.risks.length > 1 ? 's' : ''}</span>
+          <span class="risk-types">${risk.risks.length} risk${risk.risks.length > 1 ? 's' : ''} ${riskBadge}</span>
           <span class="risk-time">${formatDate(risk.timestamp)}${action}</span>
         </div>
         <div class="risk-source">${source}</div>
+        <div class="risk-types-list" style="font-size: 11px; color: #6b7280; margin-top: 4px;">${riskTypes}</div>
       </div>
     `;
   }).join('');
@@ -111,8 +128,7 @@ async function exportDSAR() {
     a.download = `ai-guardrail-dsar-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('AI Guardrail: Failed to export CSV', error);
+  } catch (_) {
     alert('Failed to export CSV. Please try again.');
   }
 }
@@ -126,8 +142,7 @@ async function clearLogs() {
   try {
     await chrome.storage.local.set({ riskLogs: [] });
     loadStats(); // Refresh display
-  } catch (error) {
-    console.error('AI Guardrail: Failed to clear logs', error);
+  } catch (_) {
     alert('Failed to clear logs. Please try again.');
   }
 }
@@ -135,6 +150,14 @@ async function clearLogs() {
 // Event listeners
 document.getElementById('export-btn').addEventListener('click', exportDSAR);
 document.getElementById('clear-btn').addEventListener('click', clearLogs);
+
+// High risk only toggle
+const highOnlyToggle = document.getElementById('high-only');
+if (highOnlyToggle) {
+  highOnlyToggle.addEventListener('change', () => {
+    loadStats(); // Reload with filter
+  });
+}
 
 // Load stats on popup open
 loadStats();

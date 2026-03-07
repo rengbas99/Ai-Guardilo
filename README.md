@@ -1,8 +1,6 @@
 # AI Guardrail Chrome Extension
 
-AI Guardrail v1 - Local PII Detection Chrome Extension
-
-Detects paste/file uploads containing UK PII (postcodes, NHS numbers, names) on ChatGPT/Claude/Perplexity. Shows non-blocking pill → One-click redact → Double-click editable mocks → Local DSAR logs.
+**Global GDPR PII redactor** – detects and redacts personally identifiable information in AI chat interfaces. No sector or region limit: names (any language), emails, international phone numbers, postal codes (US, UK, Canada, EU), national IDs (US SSN, UK NHS, EU VAT, etc.). 100% local; no data sent to servers.
 
 ## Setup
 
@@ -29,7 +27,7 @@ Test on:
 - https://claude.ai
 - https://www.perplexity.ai
 
-Try pasting: "Patient John Doe, SW1A 1AA, email: john@test.com, NHS: 123 456 7890"
+Try pasting: "Contact María García, +1 555 123 4567, john@test.com, 10001. SSN: 123-45-6789"
 
 ## Structure
 
@@ -52,13 +50,10 @@ dist/chrome-mv3/       # Built extension (after npm run build)
 
 ## Features
 
-- ✅ Detects UK postcodes (98% accuracy)
-- ✅ Detects NHS numbers (99% accuracy)
-- ✅ Detects emails (97% accuracy)
-- ✅ Detects names with context boost
-- ✅ Non-blocking floating pill UI
-- ✅ One-click redaction to clipboard
-- ✅ Local DSAR logging (chrome.storage.local)
+- ✅ **Global GDPR PII** – names (any language), emails, international phones, postal/ZIP (US, UK, CA, DE, FR, NL), national IDs (US SSN, UK NHS), EU VAT/sort codes
+- ✅ Non-blocking pill + inline underlines (Update / Ignore per item)
+- ✅ One-click redaction to clipboard and input
+- ✅ Local DSAR-style logs (chrome.storage.local)
 - ✅ 100% local execution (no server calls)
 
 ## Icons

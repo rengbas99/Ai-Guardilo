@@ -15,13 +15,27 @@
 
     <div class="stats">
       <div class="stat-card">
-        <div class="stat-value" id="today-count">0</div>
-        <div class="stat-label">Today</div>
+        <div class="stat-value" id="high-risk">0</div>
+        <div class="stat-label">🚨 High Risk Blocks</div>
       </div>
       <div class="stat-card">
         <div class="stat-value" id="total-count">0</div>
-        <div class="stat-label">Total</div>
+        <div class="stat-label">📊 Total Alerts</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-value" id="medium-risk">0</div>
+        <div class="stat-label">⚠️ Medium Risk</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="safe-contexts">0</div>
+        <div class="stat-label">✅ Safe Contexts</div>
+      </div>
+    </div>
+    
+    <div class="toggles">
+      <label>
+        <input type="checkbox" id="high-only"> High Risk Only
+      </label>
     </div>
 
     <div class="recent-risks">
