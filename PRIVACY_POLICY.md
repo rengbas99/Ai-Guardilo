@@ -1,6 +1,6 @@
 # AI Guardrail – Privacy Policy
 
-**Last updated:** March 2025  
+**Last updated:** March 2026  
 **Extension name:** AI Guardrail  
 **Version:** 1.0.0
 
