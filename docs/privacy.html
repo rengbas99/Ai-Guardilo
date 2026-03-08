@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Guardrail – Privacy Policy</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 720px; margin: 0 auto; padding: 2rem; line-height: 1.6; color: #333; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 0.75rem; }
+    h3 { font-size: 1rem; margin-top: 1.5rem; }
+    .meta { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #f5f5f5; }
+    ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+    hr { border: none; border-top: 1px solid #eee; margin: 2rem 0; }
+  </style>
+</head>
+<body>
+  <h1>AI Guardrail – Privacy Policy</h1>
+  <p class="meta"><strong>Last updated:</strong> March 2025 · <strong>Extension:</strong> AI Guardrail v1.0.0</p>
+
+  <hr>
+
+  <h2>Data collection disclosure (Chrome Web Store)</h2>
+  <p>This extension <strong>handles personal or sensitive user data</strong> in the following way:</p>
+  <ul>
+    <li>It <strong>processes text</strong> entered by the user in supported AI chat interfaces (e.g. ChatGPT, Claude, Perplexity, Gemini, Slack) <strong>in order to detect and highlight potential personal information</strong> before it is sent.</li>
+    <li><strong>All text is processed locally within the browser.</strong> The extension <strong>does not transmit this text outside the device</strong> and <strong>no raw prompt text or PII is ever transmitted or persisted</strong>.</li>
+    <li><strong>Only anonymized metadata</strong> is stored locally in <code>chrome.storage.local</code>: risk categories (e.g. email, phone, postcode), confidence scores, timestamps, and aggregate counts. <strong>We do not store the underlying messages or any PII strings.</strong></li>
+  </ul>
+
+  <h2>1. Overview</h2>
+  <p>AI Guardrail is a Chrome extension that helps you detect and redact personally identifiable information (PII) before you send messages in AI chat interfaces (e.g. ChatGPT, Claude, Perplexity, Gemini). This privacy policy explains what data the extension collects, where it is stored, and how it is used.</p>
+  <p><strong>Core principle:</strong> All PII detection and processing happens <strong>on your device</strong>. No text you type or paste is ever sent to external servers.</p>
+
+  <h2>2. Data Collection and Storage</h2>
+  <h3>2.1 What We Store</h3>
+  <p>The extension stores data <strong>only</strong> in Chrome's local extension storage (<code>chrome.storage.local</code>). This storage is:</p>
+  <ul>
+    <li><strong>Local to your browser</strong> – not synced to other devices</li>
+    <li><strong>Accessible only by the extension</strong> – websites and other extensions cannot read it</li>
+    <li><strong>Cleared when you uninstall the extension</strong></li>
+  </ul>
+  <table>
+    <tr><th>Data type</th><th>Purpose</th><th>Retention</th></tr>
+    <tr><td><strong>Risk logs</strong></td><td>History of scan metadata for the popup dashboard and DSAR export. We store <strong>aggregate counts and risk categories only, not the underlying messages or PII text</strong>.</td><td>Up to 500 entries; oldest removed when limit reached</td></tr>
+    <tr><td><strong>Stats</strong></td><td>Aggregate counts (total risks, high/medium risk, per-domain counts)</td><td>Until you clear logs</td></tr>
+    <tr><td><strong>Settings</strong></td><td>Extension enabled/disabled state</td><td>Until you change or uninstall</td></tr>
+  </table>
+
+  <h3>2.2 Risk Log Entry Structure</h3>
+  <p>Each risk log entry contains:</p>
+  <ul>
+    <li><strong>scanId</strong> – Unique identifier for the scan (no user content)</li>
+    <li><strong>timestamp</strong> – When the scan occurred</li>
+    <li><strong>risks</strong> – Array of <code>{ type, confidence }</code> only (e.g. <code>{ type: "email", confidence: 0.95 }</code>) – <strong>We do NOT store the actual PII text</strong></li>
+    <li><strong>source</strong> – How detection ran: "paste", "typing", or "file"</li>
+    <li><strong>filename</strong> – If from a file upload, the file name (optional)</li>
+    <li><strong>userAction</strong> – Your choice: "fix" (applied redaction) or "dismiss" (ignored)</li>
+    <li><strong>actionTimestamp</strong> – When you took that action</li>
+  </ul>
+
+  <h3>2.3 Stats Structure</h3>
+  <ul>
+    <li><strong>total</strong> – Total number of risks detected across all scans</li>
+    <li><strong>highRisk</strong> – Count of high-risk detections</li>
+    <li><strong>mediumRisk</strong> – Count of medium-risk detections</li>
+    <li><strong>domains</strong> – Object mapping hostname (e.g. chat.openai.com) to number of risks detected on that site</li>
+  </ul>
+
+  <h2>3. How Detection Works (Technical)</h2>
+  <h3>3.1 Chrome AI (Local, Optional)</h3>
+  <p>When available, the extension uses <strong>Chrome's built-in AI</strong> (<code>window.ai</code> / Gemini Nano) to detect PII. This runs <strong>entirely on your device</strong>:</p>
+  <ul>
+    <li>Text is processed by the model in your browser</li>
+    <li><strong>No data is sent to Google or any external server</strong></li>
+    <li>If Chrome AI is not available, the extension falls back to regex detection</li>
+  </ul>
+
+  <h3>3.2 Regex Detection (Local, Always Available)</h3>
+  <p>When Chrome AI is unavailable, the extension uses <strong>pattern-based (regex) detection</strong> that runs in the content script:</p>
+  <ul>
+    <li>All logic runs in your browser</li>
+    <li><strong>No network requests</strong> for detection</li>
+    <li>Detects: emails, phone numbers, postal codes, NHS numbers, NI numbers, bank details, card numbers, and names (with context)</li>
+  </ul>
+
+  <h3>3.3 No Cloud or External API</h3>
+  <p>The extension <strong>does not</strong> use any cloud API, OpenRouter, or other external service for PII detection. All processing is local.</p>
+
+  <h2>4. Permissions and Why We Need Them</h2>
+  <table>
+    <tr><th>Permission</th><th>Purpose</th></tr>
+    <tr><td><strong>activeTab</strong></td><td>Allows the extension to interact with the active tab (e.g. to find the chat input and apply redactions)</td></tr>
+    <tr><td><strong>storage</strong></td><td>Stores risk logs, stats, and settings locally. Required for the popup dashboard and "Clear Logs" / "Export DSAR" features</td></tr>
+    <tr><td><strong>clipboardWrite</strong></td><td>When you click "Update," the redacted text is copied to your clipboard so you can paste it if the editor does not accept programmatic replacement</td></tr>
+  </table>
+  <p>We do <strong>not</strong> request: <code>host_permissions</code> for external APIs, <code>tabs</code>, <code>webRequest</code>, or network interception.</p>
+
+  <h2>5. Where the Extension Runs</h2>
+  <p>The extension injects a content script only on these sites:</p>
+  <ul>
+    <li>chat.openai.com, chatgpt.com, claude.ai, perplexity.ai, gemini.google.com</li>
+    <li>app.slack.com, app.intercom.com, *.zendesk.com, app.hubspot.com</li>
+  </ul>
+  <p>The extension does <strong>not</strong> run on other websites.</p>
+
+  <h2>6. What We Do NOT Do</h2>
+  <ul>
+    <li><strong>We do not send your text to any server</strong> – detection is 100% local</li>
+    <li><strong>We do not store the actual PII you type</strong> – only risk types and confidence scores</li>
+    <li><strong>We do not track you across sites</strong> – we store domain names only for aggregate stats</li>
+    <li><strong>We do not sell or share data</strong> – everything stays on your device</li>
+    <li><strong>We do not use cookies or third-party analytics</strong></li>
+  </ul>
+
+  <h2>7. Your Controls</h2>
+  <ul>
+    <li><strong>Clear Logs</strong> – From the extension popup, click "Clear Logs" to delete all risk logs.</li>
+    <li><strong>Export Data (DSAR)</strong> – Click "Export DSAR CSV" to download a CSV of your risk log entries (metadata only, not PII text).</li>
+    <li><strong>Uninstall</strong> – Uninstalling the extension removes all stored data.</li>
+  </ul>
+
+  <h2>8. Data Security</h2>
+  <ul>
+    <li>All stored data is in Chrome's extension storage, which is isolated from web pages</li>
+    <li>No data is transmitted over the network for detection purposes</li>
+    <li>The extension does not execute remote code</li>
+  </ul>
+
+  <h2>9. Children</h2>
+  <p>The extension is not directed at children. We do not knowingly collect data from children under 13 (or equivalent age in your jurisdiction).</p>
+
+  <h2>10. Changes to This Policy</h2>
+  <p>We may update this privacy policy. The "Last updated" date at the top will change. Continued use of the extension after changes constitutes acceptance of the updated policy.</p>
+
+  <h2>11. Contact</h2>
+  <p>For privacy-related questions or requests, please open an issue in the <a href="https://github.com/rengbas99/Ai-Guardilo">extension's repository</a> or contact the developer through the Chrome Web Store listing.</p>
+
+  <h2>12. Summary (TL;DR)</h2>
+  <ul>
+    <li><strong>All PII detection runs on your device</strong> (Chrome AI or regex)</li>
+    <li><strong>No text is sent to external servers</strong></li>
+    <li><strong>We store only metadata</strong> (risk types, confidence, timestamps, domain names) – not the actual PII</li>
+    <li><strong>You can clear logs and export your data</strong> from the popup</li>
+    <li><strong>Uninstalling removes all data</strong></li>
+  </ul>
+</body>
+</html>
