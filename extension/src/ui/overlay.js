@@ -21,6 +21,9 @@ const overlayRegistry = new WeakMap();
 
 let _hideTimer = null;
 let _tooltipHovered = false;
+let _stickyRisk = null;
+let _stickyOrigin = { x: 0, y: 0 };
+const STICKY_THRESHOLD_PX = 100;
 
 function syncPosition(overlay, targetElement) {
   if (!overlay || !targetElement || !document.body.contains(targetElement)) return;
@@ -555,6 +558,15 @@ function attachElementListeners(inputElement) {
   };
 
   const onMouseMove = throttle((e) => {
+    if (_stickyRisk) {
+      const dist = Math.hypot(
+        e.clientX - _stickyOrigin.x,
+        e.clientY - _stickyOrigin.y
+      );
+      if (dist < STICKY_THRESHOLD_PX) return; // still locked
+      _stickyRisk = null; // far enough away — unlock
+    }
+
     const s = stateByElement.get(inputElement);
     if (!s || !s.riskRanges || s.riskRanges.length === 0) {
       hideTooltip();
@@ -644,15 +656,38 @@ function attachElementListeners(inputElement) {
     tooltip.style.top = `${top}px`;
   }, 80);
 
+  // Lock tooltip on click
+  const onClick = (e) => {
+    const s = stateByElement.get(inputElement);
+    if (!s?.riskRanges?.length) return;
+
+    for (const rr of s.riskRanges) {
+      const rects = rr.range.getClientRects();
+      for (const rect of rects) {
+        if (pointInRect(e.clientX, e.clientY, rect, 4)) {
+          _stickyRisk = rr;
+          _stickyOrigin = { x: e.clientX, y: e.clientY };
+          clearTimeout(_hideTimer);
+          _hideTimer = null;
+          return;
+        }
+      }
+    }
+    // Clicked outside any risk — unstick
+    _stickyRisk = null;
+  };
+
   inputElement.addEventListener('input', onInput);
   inputElement.addEventListener('scroll', onContentScroll, { passive: true });
   inputElement.addEventListener('mousemove', onMouseMove);
   inputElement.addEventListener('mouseleave', onMouseLeave);
+  inputElement.addEventListener('click', onClick);
 
   state.onInput = onInput;
   state.onContentScroll = onContentScroll;
   state.onMouseMove = onMouseMove;
   state.onMouseLeave = onMouseLeave;
+  state.onClick = onClick;
   stateByElement.set(inputElement, state);
 }
 
@@ -664,6 +699,7 @@ function detachElementListeners(inputElement) {
   inputElement.removeEventListener('scroll', state.onContentScroll);
   inputElement.removeEventListener('mousemove', state.onMouseMove);
   inputElement.removeEventListener('mouseleave', state.onMouseLeave);
+  inputElement.removeEventListener('click', state.onClick);
 
   state.listenersAttached = false;
   state.onInput = null;

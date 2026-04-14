@@ -97,8 +97,11 @@ export function redact(text, risks) {
     const placeholder = indexMap.get(risk);
     const originalLen = risk.end - risk.start;
 
-    // Do not pad with spaces. Padding breaks UI layout in normal fonts and collapses in HTML.
+    // Pad with spaces to preserve alignment (e.g. multi-line field lists)
     let replacement = placeholder;
+    if (placeholder.length < originalLen) {
+      replacement = placeholder.padEnd(originalLen, ' ');
+    }
 
     redacted = redacted.substring(0, risk.start) + replacement + redacted.substring(risk.end);
   }

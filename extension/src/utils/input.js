@@ -69,27 +69,50 @@ export function getInputValue(el) {
   return el.innerText || el.textContent || '';
 }
 
-export function setInputValue(el, value) {
-  if (!el) return false;
-  try {
-    textFieldEdit.set(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+export function setInputValue(element, value) {
+  if (!element) return false;
+
+  if (element.isContentEditable || element.getAttribute('contenteditable') === 'true') {
+    // innerText preserves \n correctly; textContent and innerHTML both collapse them
+    element.innerText = value;
+
+    // Move cursor to end so the user can keep typing naturally
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    // Fire both input and change — React (ChatGPT) needs the native setter trick
+    try {
+      const proto = Object.getOwnPropertyDescriptor(
+        window.HTMLElement.prototype, 'innerText'
+      );
+      if (proto?.set) proto.set.call(element, value);
+    } catch (_) {}
+
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
-  } catch (e) {
-    // Fallback for unsupported elements
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      el.value = value;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
+
+  } else {
+    // Standard textarea / input
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype, 'value'
+    )?.set || Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, 'value'
+    )?.set;
+
+    if (nativeSetter) {
+      nativeSetter.call(element, value);
+    } else {
+      element.value = value;
     }
-    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true') {
-      el.innerText = value;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      return true;
-    }
-    return false;
+
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
   }
 }
 

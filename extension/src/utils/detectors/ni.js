@@ -11,7 +11,7 @@ import { claimSpan, isOverlapping, makeRisk } from './shared.js';
  * - Suffix: [A-D]
  */
 
-const RE_NI = /\b([A-Z]{2}[\s\-]?\d{2}[\s\-]?\d{2}[\s\-]?\d{2}[\s\-]?[A-D])(?!\d)/gi;
+const RE_NI = /\b([A-Z]{2}[ \t\-]?\d{2}[ \t\-]?\d{2}[ \t\-]?\d{2}[ \t\-]?[A-D])(?!\d)/gi;
 const RE_NI_CONTEXT = /\b(national\s*insurance|ni\s*number|nino|n\.i\.|ni)\b/i;
 
 // HMRC forbidden first letters
@@ -44,7 +44,7 @@ export function detectNI(text, claimed) {
 
     if (isOverlapping(claimed, start, end)) continue;
 
-    const surrounding = text.slice(Math.max(0, start - 40), end + 20);
+    const surrounding = text.slice(Math.max(0, start - 80), end + 40);
     const hasContext = RE_NI_CONTEXT.test(surrounding);
 
     if (!isValidNIPrefix(prefix)) {

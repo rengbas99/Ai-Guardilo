@@ -2,10 +2,10 @@ import { claimSpan, isOverlapping, makeRisk } from './shared.js';
 
 // Sort code: 6 digits in pairs (e.g. 40-47-84 or 40 47 84)
 // Account: 8 digits — allow "Account:", "Account Number:", or bare whitespace between
-const RE_SORTCODE_ACCOUNT = /\b(\d{2}[\s\-]\d{2}[\s\-]\d{2})[\s\-]*(?:account(?:\s+number)?\s*:?\s*)?[\s\-]*(\d{8})(?!\d)/gi;
+const RE_SORTCODE_ACCOUNT = /\b(\d{2}[ \t\-]\d{2}[ \t\-]\d{2})[ \t\-]*(?:account(?:[ \t]+number)?[ \t]*:?[ \t]*)?[ \t\-]*(\d{8})(?!\d)/gi;
 
 // Sort code only: XX-XX-XX or XX XX XX
-const RE_SORTCODE = /\b(\d{2}[\s\-]\d{2}[\s\-]\d{2})(?!\d)/g;
+const RE_SORTCODE = /\b(\d{2}[ \t\-]\d{2}[ \t\-]\d{2})(?!\d)/g;
 
 // Account number only: 8 digits (UK standard)
 const RE_ACCOUNT = /\b(\d{8})(?!\d)/g;
@@ -27,7 +27,7 @@ export function detectBank(text, claimed) {
 
     if (isOverlapping(claimed, start, end)) continue;
 
-    const surrounding = text.slice(Math.max(0, start - 100), end + 20);
+    const surrounding = text.slice(Math.max(0, start - 120), end + 60);
     if (!RE_BANK_CONTEXT.test(surrounding)) continue;
 
     risks.push(makeRisk('sortcode_account', match[0], start, end, 0.92));
@@ -42,8 +42,8 @@ export function detectBank(text, claimed) {
 
     if (isOverlapping(claimed, start, end)) continue;
 
-    const before = text.slice(Math.max(0, start - 40), start);
-    const after = text.slice(end, end + 20);
+    const before = text.slice(Math.max(0, start - 120), start);
+    const after = text.slice(end, end + 60);
     const surrounding = before + match[0] + after;
     if (!RE_SORTCODE_CONTEXT.test(surrounding)) continue;
 
