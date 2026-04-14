@@ -3,17 +3,17 @@
  * Claimed span registry — prevents two detectors claiming the same text.
  */
 
+// Claimed spans stored as an Array<[number, number]> — avoids string parse on every lookup.
 export function createClaimedSet() {
-  return new Set(); // stores "start:end" strings
+  return []; // Array of [start, end] tuples
 }
 
 export function claimSpan(claimed, start, end) {
-  claimed.add(`${start}:${end}`);
+  claimed.push([start, end]);
 }
 
 export function isOverlapping(claimed, start, end) {
-  for (const entry of claimed) {
-    const [cs, ce] = entry.split(':').map(Number);
+  for (const [cs, ce] of claimed) {
     if (!(end <= cs || start >= ce)) return true;
   }
   return false;
@@ -24,17 +24,23 @@ export function makeRisk(type, text, start, end, confidence) {
 }
 
 export const DISPLAY_LABELS = {
-  nhs_number: 'NHS Number',
-  ni_number: 'NI Number',
-  uk_postcode: 'UK Postcode',
-  uk_vat: 'UK VAT Number',
-  sortcode_account: 'Bank Details',
-  sortcode: 'Sort Code',
-  account_number: 'Account Number',
-  card_number: 'Card Number',
-  uk_phone: 'Phone Number',
-  email: 'Email Address',
-  name: 'Name',
+  nhs_number:      'NHS Number',
+  ni_number:       'NI Number',
+  uk_postcode:     'UK Postcode',
+  uk_vat:          'UK VAT Number',
+  sortcode_account:'Bank Details',
+  sortcode:        'Sort Code',
+  account_number:  'Account Number',
+  card_number:     'Card Number',
+  uk_phone:        'Phone Number',
+  email:           'Email Address',
+  ip_address:      'IP Address',
+  driving_licence: 'Driving Licence',
+  passport:        'Passport Number',
+  date_of_birth:   'Date of Birth',
+  iban:            'IBAN',
+  name:            'Name',
+  address:         'Physical Address',
 };
 
 // Placeholder mapping for redaction (supports both new and legacy type names)
@@ -52,9 +58,14 @@ const PLACEHOLDERS = {
   card_number: (i) => `[CARD_${i}]`,
   uk_phone: (i) => `[PHONE_${i}]`,
   phone: (i) => `[PHONE_${i}]`,
-  email: (i) => `[EMAIL_${i}]`,
-  name: (i) => `[NAME_${i}]`,
-  address: (i) => `[ADDRESS_${i}]`,
+  email:           (i) => `[EMAIL_${i}]`,
+  ip_address:      (i) => `[IP_${i}]`,
+  driving_licence: (i) => `[DRIVING_LICENCE_${i}]`,
+  passport:        (i) => `[PASSPORT_${i}]`,
+  date_of_birth:   (i) => `[DOB_${i}]`,
+  iban:            (i) => `[IBAN_${i}]`,
+  name:            (i) => `[NAME_${i}]`,
+  address:         (i) => `[ADDRESS_${i}]`,
 };
 
 export function getPlaceholder(type, index) {
@@ -84,7 +95,12 @@ export function redact(text, risks) {
   let redacted = text;
   for (const risk of sortedRisks) {
     const placeholder = indexMap.get(risk);
-    redacted = redacted.substring(0, risk.start) + placeholder + redacted.substring(risk.end);
+    const originalLen = risk.end - risk.start;
+
+    // Do not pad with spaces. Padding breaks UI layout in normal fonts and collapses in HTML.
+    let replacement = placeholder;
+
+    redacted = redacted.substring(0, risk.start) + replacement + redacted.substring(risk.end);
   }
   return redacted;
 }

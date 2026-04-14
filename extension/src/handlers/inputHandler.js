@@ -1,12 +1,12 @@
 /**
- * Input change handler (typing, debounce)
- * Fix 11: requestIdleCallback for non-urgent scans to avoid blocking main thread.
- * Fix 13: Adaptive debounce based on risk level.
+ * Input change handler (typing with adaptive debounce)
+ * Paste detection is exclusively owned by pasteHandler.js —
+ * this handler only fires for keyboard input.
  */
 
 import { removeInlineSuggestions } from '../ui/overlay.js';
 
-let lastKnownRiskLevel = null; // "HIGH" | "MEDIUM" | null
+let lastKnownRiskLevel = null;
 
 export function updateLastRiskLevel(level) {
   lastKnownRiskLevel = level;
@@ -14,9 +14,9 @@ export function updateLastRiskLevel(level) {
 
 function getDebounceMs() {
   switch (lastKnownRiskLevel) {
-    case 'HIGH': return 80;   // Near-real-time: user is actively entering PII
-    case 'MEDIUM': return 200; // Standard
-    default: return 350;      // Long idle: low probability of PII
+    case 'HIGH':   return 80;   // Near-real-time: user is actively entering PII
+    case 'MEDIUM': return 200;  // Standard
+    default:       return 350;  // Low probability of PII
   }
 }
 
@@ -34,57 +34,36 @@ function isTrackedElement(el) {
   if (!el) return false;
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return true;
   if (el.isContentEditable === true || el.getAttribute?.('contenteditable') === 'true') return true;
-  const editable = el.closest?.('[contenteditable="true"]');
-  return !!editable;
+  return !!el.closest?.('[contenteditable="true"]');
 }
 
 function resolveInputElement(el) {
   if (!el) return null;
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return el;
-  const editable = el.closest?.('[contenteditable="true"]');
-  return editable || (el.isContentEditable ? el : null);
+  return el.closest?.('[contenteditable="true"]') || (el.isContentEditable ? el : null);
 }
 
 export function createInputHandler(scanAndAlert) {
   let timer = null;
   return function handleInputChange(event) {
-    const rawTarget = event.target;
-    const input = resolveInputElement(rawTarget);
-    if (!input || !isTrackedElement(rawTarget)) return;
+    const input = resolveInputElement(event.target);
+    if (!input || !isTrackedElement(event.target)) return;
 
-    const newValue = input.value || input.textContent || input.innerText || '';
+    const value = input.value || input.textContent || input.innerText || '';
 
     removeInlineSuggestions();
 
-    // If user cleared the text, immediately clear UI and skip debounced scan
-    if (!newValue.trim()) {
+    if (!value.trim()) {
       clearTimeout(timer);
       updateLastRiskLevel(null);
       document.getElementById('ai-guardrail-pill')?.remove();
-      input.dataset.lastLength = '0';
+      document.getElementById('ai-guardrail-sidebar')?.remove();
       return;
     }
 
-    if (newValue.length > 50 && input.dataset.lastLength) {
-      const lastLength = parseInt(input.dataset.lastLength, 10);
-      const changeSize = newValue.length - lastLength;
-
-      if (changeSize > 20) {
-        const newText = newValue.substring(lastLength);
-        scanAndAlert(newText, 'paste');
-      } else {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          scheduleScan(() => scanAndAlert(newValue, 'typing'));
-        }, getDebounceMs());
-      }
-    } else {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        scheduleScan(() => scanAndAlert(newValue, 'typing'));
-      }, getDebounceMs());
-    }
-
-    input.dataset.lastLength = newValue.length.toString();
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      scheduleScan(() => scanAndAlert(value, 'typing'));
+    }, getDebounceMs());
   };
 }

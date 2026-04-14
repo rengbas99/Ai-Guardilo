@@ -1,10 +1,9 @@
 {
   "manifest_version": 3,
   "name": "AI Guardrail",
-  "version": "1.0.0",
-  "description": "UK PII redactor. Detects names, emails, phones, postcodes, NHS numbers, NI numbers, bank details in AI chats. 100% local.",
+  "version": "1.0.4",
+  "description": "Privacy-first PII redaction for AI chats and web tools. Detects UK names, emails, bank details and more—100% local.",
   "permissions": [
-    "activeTab",
     "storage",
     "clipboardWrite"
   ],

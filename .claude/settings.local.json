@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/renganatharaam/AI-Gaurdilo -not -path */node_modules/* -not -path */.git/* -not -path */dist/* -not -path */extension_backup* -type f)",
+      "Bash(bun run:*)",
+      "Bash(bun test:*)"
+    ]
+  }
+}

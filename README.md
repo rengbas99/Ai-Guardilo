@@ -35,7 +35,7 @@ Paste / Type / Upload  →  Detect PII  →  Underline  →  Update or Ignore
          │                    │              │
          │                    │              └── One-click redact or dismiss
          │                    └── Chrome AI or regex (local only)
-         └── Works on ChatGPT, Claude, Perplexity, Gemini, Slack, Intercom, Zendesk, HubSpot
+         └── Works on major AI tools and web-based productivity platforms
 ```
 
 1. **Paste** – Paste into a chat input → scan runs on the pasted text.
@@ -125,16 +125,15 @@ Then in Chrome:
 
 ---
 
-## Supported sites
+## Supported Platforms
 
-- ChatGPT (chat.openai.com, chatgpt.com)
-- Claude (claude.ai)
-- Perplexity (perplexity.ai)
-- Gemini (gemini.google.com)
-- Slack (app.slack.com)
-- Intercom (app.intercom.com)
-- Zendesk (*.zendesk.com)
-- HubSpot (app.hubspot.com)
+AI Guardrail is designed to work seamlessly across your favorite AI and productivity tools, including:
+
+- **AI Assistants:** Major chat-based AI platforms (OpenAI, Anthropic, Google, etc.)
+- **Communication:** Enterprise messaging and collaboration tools.
+- **Support & CRM:** Leading customer service and helpdesk platforms.
+
+*For a full list of technical match patterns, see [manifest.json](extension/manifest.json).*
 
 ---
 

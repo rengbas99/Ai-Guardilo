@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync, readdirSync, renameSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readdirSync, renameSync, rmSync } from 'fs';
 
 export default defineConfig({
   build: {
@@ -37,36 +37,32 @@ export default defineConfig({
         if (existsSync(popupHtmlWrong)) {
           mkdirSync(resolve(distDir, 'popup'), { recursive: true });
           renameSync(popupHtmlWrong, popupHtmlCorrect);
-          // Clean up empty extension/popup folder
+          // Clean up leftover extension/ directory
           try {
-            const emptyDir = resolve(distDir, 'extension');
-            if (readdirSync(emptyDir).length === 0) {
-              require('fs').rmdirSync(emptyDir);
+            const extensionDir = resolve(distDir, 'extension');
+            if (existsSync(extensionDir)) {
+              rmSync(extensionDir, { recursive: true, force: true });
             }
-          } catch (e) {
-            // Ignore cleanup errors
-          }
+          } catch (_) {}
         }
 
         // Copy manifest.json
         const manifestSrc = resolve(__dirname, 'extension/manifest.json');
-        const manifestDest = resolve(distDir, 'manifest.json');
         if (existsSync(manifestSrc)) {
-          copyFileSync(manifestSrc, manifestDest);
+          copyFileSync(manifestSrc, resolve(distDir, 'manifest.json'));
         }
 
         // Copy icons
         const iconsSrc = resolve(__dirname, 'extension/icons');
-        const iconsDest = resolve(distDir, 'icons');
         if (existsSync(iconsSrc)) {
+          const iconsDest = resolve(distDir, 'icons');
           mkdirSync(iconsDest, { recursive: true });
-          const iconFiles = readdirSync(iconsSrc).filter(f => f.endsWith('.png'));
-          iconFiles.forEach(file => {
-            copyFileSync(resolve(iconsSrc, file), resolve(iconsDest, file));
-          });
+          readdirSync(iconsSrc)
+            .filter(f => f.endsWith('.png'))
+            .forEach(file => copyFileSync(resolve(iconsSrc, file), resolve(iconsDest, file)));
         }
 
-        // Copy popup CSS (if not already copied by Vite)
+        // Copy popup CSS (if not already bundled by Vite)
         const popupCssSrc = resolve(__dirname, 'extension/popup/popup.css');
         const popupCssDest = resolve(distDir, 'popup/popup.css');
         if (existsSync(popupCssSrc) && !existsSync(popupCssDest)) {
@@ -74,7 +70,7 @@ export default defineConfig({
           copyFileSync(popupCssSrc, popupCssDest);
         }
 
-        // Copy popup JS (if not already copied by Vite)
+        // Copy popup JS (if not already bundled by Vite)
         const popupJsSrc = resolve(__dirname, 'extension/popup/popup.js');
         const popupJsDest = resolve(distDir, 'popup/popup.js');
         if (existsSync(popupJsSrc) && !existsSync(popupJsDest)) {
@@ -84,4 +80,3 @@ export default defineConfig({
     },
   ],
 });
-

@@ -6,57 +6,71 @@
 import { getContext } from './utils/context.js';
 import { getInputElement, getInputValue } from './utils/input.js';
 import { getPasteTargetElement, clearPasteTargetElement, createScan, clearAllScans, clearOverlayTargetElement, isScanStale } from './state/scanState.js';
-import { detectPIIWithAI } from './services/pii-ai-service.js';
 import { mergeRisks } from './services/detectionMerger.js';
 import { createInputHandler, updateLastRiskLevel } from './handlers/inputHandler.js';
 import { createPasteHandler } from './handlers/pasteHandler.js';
 import { createFileHandler } from './handlers/fileHandler.js';
 import { getContentEditableText, normalizeNewlines, mapRisksToDomText } from './utils/rangeMapping.js';
 import { showInlineSuggestions, removeInlineSuggestions, injectHighlightCSS } from './ui/overlay.js';
-import { showBodyPopup } from './ui/popup.js';
+import { showBodyPopup, removeBodyPopup } from './ui/popup.js';
+import { getPlaceholder } from './utils/detectors/shared.js';
+import { detectPIIWithAI } from './services/pii-ai-service.js';
 
-function sendStatsUpdate(risks, domain) {
-  try {
-    if (chrome.runtime?.id) {
-      chrome.runtime.sendMessage({
-        type: 'STATS_UPDATE',
-        risksFound: risks.length,
-        highRisk: risks.filter(r => r.risk === 'HIGH').length,
-        mediumRisk: risks.filter(r => r.risk === 'MEDIUM' || r.risk == null).length,
-        domain: domain || window.location.hostname
-      }).catch(() => {});
-    }
-  } catch (_) {}
-}
+// Signature of the precise set of risks that the user last dismissed with 'X'
+let lastDismissedSignature = '';
 
 function isExtensionContextValid() {
   try {
-    return chrome.runtime && chrome.runtime.id !== undefined;
+    return !!(chrome.runtime?.id);
   } catch (_) {
     return false;
   }
 }
 
-async function logRisk(scanId, risks, source, filename) {
+function safeSendMessage(msg) {
   try {
-    if (!isExtensionContextValid()) return;
-    chrome.runtime.sendMessage({
+    if (isExtensionContextValid()) {
+      chrome.runtime.sendMessage(msg).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+async function logRisk(scanId, risks, source, filename) {
+  if (!isExtensionContextValid()) return;
+  try {
+    await chrome.runtime.sendMessage({
       type: 'LOG_RISK',
-      entry: { scanId, timestamp: Date.now(), risks: risks.map(r => ({ type: r.type, confidence: r.confidence })), source, filename: filename || null, userAction: null }
-    }, () => {});
+      entry: {
+        scanId,
+        timestamp: Date.now(),
+        risks: risks.map(r => ({ type: r.type, confidence: r.confidence })),
+        source,
+        filename: filename || null,
+        userAction: null,
+      },
+    });
   } catch (e) {
     if (e?.message?.includes('Extension context invalidated')) return;
   }
 }
 
-
 async function updateLog(scanId, userAction) {
+  if (!isExtensionContextValid()) return;
   try {
-    if (!isExtensionContextValid()) return;
-    chrome.runtime.sendMessage({ type: 'UPDATE_LOG', scanId, userAction }, () => {});
+    await chrome.runtime.sendMessage({ type: 'UPDATE_LOG', scanId, userAction });
   } catch (e) {
     if (e?.message?.includes('Extension context invalidated')) return;
   }
+}
+
+function sendStatsUpdate(risks) {
+  safeSendMessage({
+    type: 'STATS_UPDATE',
+    risksFound: risks.length,
+    highRisk: risks.filter(r => r.risk === 'HIGH').length,
+    mediumRisk: risks.filter(r => r.risk === 'MEDIUM' || r.risk == null).length,
+    domain: window.location.hostname,
+  });
 }
 
 async function scanAndAlert(content, source, filename = null) {
@@ -73,8 +87,8 @@ async function scanAndAlert(content, source, filename = null) {
       const result = getContentEditableText(inputElement);
       const domText = normalizeNewlines(result.text || '');
       const pastedNorm = content ? normalizeNewlines(content) : '';
-      // For paste: use DOM when it has ≥80% of pasted content so we can underline; else clipboard + retry
-      if (source === 'paste' && pastedNorm && pastedNorm.length > domText.length + 5 && domText.length < pastedNorm.length * 0.8) {
+      // Use clipboard text when DOM hasn't caught up yet (< 80% of pasted length available)
+      if (source === 'paste' && pastedNorm && domText.length < pastedNorm.length * 0.8) {
         fullText = pastedNorm;
         textIndex = null;
       } else {
@@ -92,25 +106,20 @@ async function scanAndAlert(content, source, filename = null) {
     updateLastRiskLevel(null);
     clearPasteTargetElement();
     removeInlineSuggestions();
-    document.getElementById('ai-guardrail-pill')?.remove();
+    removeBodyPopup();
+    lastDismissedSignature = '';
     return;
   }
 
-  const context = getContext();
-  context.text = fullText;
+  getContext().text = fullText;
 
+  // Hybrid Detection: Combine Chrome's on-device AI (experimental) with Regex logic
   let aiRisks = [];
-  let effectiveSource = 'regex';
-
   try {
-    const { risks, source: detSrc } = await detectPIIWithAI(fullText);
-    aiRisks = risks || [];
-    effectiveSource = detSrc;
-  } catch (err) {
-    effectiveSource = 'regex-fallback';
-    try {
-      chrome.runtime.sendMessage({ type: 'DETECTION_FALLBACK', reason: err?.message, timestamp: Date.now() }).catch(() => {});
-    } catch (_) {}
+    const aiResult = await detectPIIWithAI(fullText);
+    aiRisks = aiResult.risks || [];
+  } catch (e) {
+    // Fall back silently to regex if AI is unavailable (standard Chrome extension behavior)
   }
 
   let filteredRisks = mergeRisks(aiRisks, fullText);
@@ -120,8 +129,11 @@ async function scanAndAlert(content, source, filename = null) {
     clearPasteTargetElement();
     removeInlineSuggestions();
     document.getElementById('ai-guardrail-pill')?.remove();
+    lastDismissedSignature = '';
     return;
   }
+
+  const currentSignature = filteredRisks.map(r => `${r.type}:${r.text}`).sort().join('|');
 
   const riskLevel = filteredRisks.some(r => r.risk === 'HIGH') ? 'HIGH' : 'MEDIUM';
   updateLastRiskLevel(riskLevel);
@@ -134,46 +146,72 @@ async function scanAndAlert(content, source, filename = null) {
     else removeInlineSuggestions();
   };
 
-  showInlineSuggestions(scanId, filteredRisks, fullText, source, filename, effectiveSource, targetElement, onRescan, updateLog, textIndex);
+  const handleUpdateLog = async (id, action) => {
+    if (action === 'dismiss') {
+      // Remember this exact combination of risks
+      lastDismissedSignature = currentSignature;
+    }
+    return updateLog(id, action);
+  };
 
-  // When paste used clipboard text (textIndex=null), DOM may lag — retry highlights once DOM has content
-  if (textIndex === null && targetElement && (targetElement.isContentEditable || targetElement.getAttribute?.('contenteditable') === 'true')) {
-    const retryDelays = fullText.length > 300 ? [0, 150, 400, 800, 1500, 2500] : [0, 150, 400, 800];
+  showInlineSuggestions(scanId, filteredRisks, fullText, source, filename, 'regex', targetElement, onRescan, handleUpdateLog, textIndex);
+
+  // When paste used clipboard text (textIndex=null), DOM may lag — retry highlights once DOM has content.
+  if (
+    textIndex === null &&
+    targetElement &&
+    (targetElement.isContentEditable || targetElement.getAttribute?.('contenteditable') === 'true')
+  ) {
+    const retryDelays = fullText.length > 300
+      ? [100, 300, 600, 1000, 1800, 3000]
+      : [100, 300, 600, 1000];
+
     const retryHighlight = () => {
       if (isScanStale(scanId)) return;
-      // Prefer getInputElement (main input) then paste target; use whichever has more matching text
+
+      // Prefer whichever element has more matching text
       const mainInput = getInputElement();
       let el = targetElement;
       let result = getContentEditableText(el);
       let domText = normalizeNewlines(result.text || '');
+
       if (mainInput && mainInput !== el) {
         const mainResult = getContentEditableText(mainInput);
         const mainText = normalizeNewlines(mainResult.text || '');
-        if (mainText.length > domText.length && mainText.length >= fullText.length * 0.5) {
+        if (mainText.length > domText.length) {
           el = mainInput;
           result = mainResult;
           domText = mainText;
         }
       }
-      if (domText.length < 10) return;
+
+      // Wait until the DOM has at least 90% of the pasted content before mapping
+      if (domText.length < fullText.length * 0.9) return;
+
       let risksToUse = filteredRisks;
       let textToUse = domText;
-      if (domText === fullText) {
-        textToUse = domText;
-      } else {
+
+      if (domText !== fullText) {
         const mapped = mapRisksToDomText(filteredRisks, domText);
         if (!mapped || mapped.length === 0) return;
         risksToUse = mapped;
       }
-      showInlineSuggestions(scanId, risksToUse, textToUse, source, filename, effectiveSource, el, onRescan, updateLog, result.index);
+
+      showInlineSuggestions(scanId, risksToUse, textToUse, source, filename, 'regex', el, onRescan, updateLog, result.index);
     };
-    retryDelays.forEach((ms) => setTimeout(retryHighlight, ms));
-    requestAnimationFrame(() => requestAnimationFrame(retryHighlight));
+
+    retryDelays.forEach(ms => setTimeout(retryHighlight, ms));
   }
 
-  showBodyPopup(scanId, filteredRisks, fullText, source, filename, effectiveSource, targetElement, updateLog);
+  if (currentSignature !== lastDismissedSignature) {
+    showBodyPopup(scanId, filteredRisks, fullText, source, filename, 'regex', targetElement, handleUpdateLog, onRescan);
+  } else {
+    // Suppress popup but ensure underline stays
+    document.getElementById('ai-guardrail-pill')?.remove();
+    document.getElementById('ai-guardrail-sidebar')?.remove();
+  }
 
-  sendStatsUpdate(filteredRisks, context.domain);
+  sendStatsUpdate(filteredRisks);
   logRisk(scanId, filteredRisks, source, filename).catch(() => {});
 }
 
@@ -196,43 +234,21 @@ function init() {
   const handlePaste = createPasteHandler(scanAndAlert);
   const handleFileUpload = createFileHandler(scanAndAlert);
 
-  document.addEventListener('paste', (e) => { handlePaste(e); }, true);
+  document.addEventListener('paste', handlePaste, true);
   document.addEventListener('change', (e) => {
     if (e.target.tagName === 'INPUT' && e.target.type === 'file') handleFileUpload(e);
   }, true);
-  document.addEventListener('input', (e) => { handleInputChange(e); }, true);
-  document.addEventListener('input', (e) => {
-    if (e.target.isContentEditable) handleInputChange(e);
-  }, true);
+  // Single input listener covers both regular inputs and contenteditable
+  document.addEventListener('input', handleInputChange, true);
 
-  const setupInputMonitoring = () => {
+  // Watch for new input elements added to the DOM (SPAs that render inputs late)
+  const inputObserver = new MutationObserver(() => {
     const inputElement = getInputElement();
-    if (inputElement) {
-      inputElement.addEventListener('input', () => {
-        try {
-          if (window.CSS && CSS.highlights) CSS.highlights.delete('ai-guardrail-highlight');
-        } catch (_) {}
-      });
-      let lastValue = inputElement.value || inputElement.textContent || '';
-      let checkCount = 0;
-      const monitorInterval = setInterval(() => {
-        const currentValue = inputElement.value || inputElement.textContent || '';
-        if (currentValue !== lastValue) {
-          const changeSize = currentValue.length - lastValue.length;
-          if (changeSize > 20 && currentValue.length > lastValue.length) {
-            const newText = currentValue.substring(lastValue.length);
-            scanAndAlert(newText, 'paste');
-          }
-          lastValue = currentValue;
-        }
-        checkCount++;
-        if (checkCount > 600) clearInterval(monitorInterval);
-      }, 500);
-    } else {
-      setTimeout(setupInputMonitoring, 2000);
+    if (inputElement && !inputElement.dataset.agAttached) {
+      inputElement.dataset.agAttached = '1';
     }
-  };
-  setupInputMonitoring();
+  });
+  inputObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 if (document.readyState === 'loading') {

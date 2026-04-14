@@ -7,51 +7,115 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>🛡️ AI Guardrail</h1>
-      <p class="subtitle">PII Detection & Protection</p>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="shield-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="header-title">AI Guardrail</div>
+          <div class="header-sub">PII Security Monitor</div>
+        </div>
+      </div>
+      <span class="pulse-dot" title="Monitoring active"></span>
     </header>
 
-    <div class="stats">
-      <div class="stat-card">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card high">
+        <div class="stat-icon-row">
+          <!-- alert-triangle -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span class="stat-label">High Risk</span>
+        </div>
         <div class="stat-value" id="high-risk">0</div>
-        <div class="stat-label">🚨 High Risk Blocks</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" id="total-count">0</div>
-        <div class="stat-label">📊 Total Alerts</div>
-      </div>
-      <div class="stat-card">
+
+      <div class="stat-card medium">
+        <div class="stat-icon-row">
+          <!-- info -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span class="stat-label">Medium</span>
+        </div>
         <div class="stat-value" id="medium-risk">0</div>
-        <div class="stat-label">⚠️ Medium Risk</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-value" id="safe-contexts">0</div>
-        <div class="stat-label">✅ Safe Contexts</div>
+
+      <div class="stat-card total">
+        <div class="stat-icon-row">
+          <!-- shield -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span class="stat-label">Total</span>
+        </div>
+        <div class="stat-value" id="total-count">0</div>
       </div>
     </div>
-    
-    <div class="toggles">
-      <label>
-        <input type="checkbox" id="high-only"> High Risk Only
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <span class="section-label">Detected Risks</span>
+      <label class="toggle">
+        <input type="checkbox" id="high-only">
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-text">High only</span>
       </label>
     </div>
 
-    <div class="recent-risks">
-      <h2>Recent Risks</h2>
-      <div id="risks-list" class="risks-list">
-        <p class="empty-state">No risks detected yet</p>
+    <!-- Risk list -->
+    <div class="risk-list" id="risks-list">
+      <div class="empty-state">
+        <span class="empty-icon">🛡️</span>
+        <span class="empty-title">No risks detected yet</span>
+        <span class="empty-hint">Start typing in a supported AI chat</span>
       </div>
     </div>
 
-    <div class="actions">
-      <button id="export-btn" class="btn btn-primary">Export DSAR CSV</button>
-      <button id="clear-btn" class="btn btn-secondary">Clear Logs</button>
+    <!-- Confirm bar (hidden until Clear is clicked) -->
+    <div id="confirm-bar" class="confirm-bar" hidden>
+      <span>Permanently delete all logs?</span>
+      <button id="confirm-yes" class="btn-sm btn-red">Delete</button>
+      <button id="confirm-no" class="btn-sm btn-ghost">Cancel</button>
     </div>
-  </div>
 
+    <!-- Toast notification -->
+    <div id="status-msg" class="toast" hidden></div>
+
+    <!-- Action buttons -->
+    <div class="actions">
+      <button id="export-btn" class="btn btn-primary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Export Report
+      </button>
+      <button id="clear-btn" class="btn btn-outline">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+          <path d="M10 11v6M14 11v6"/>
+          <path d="M9 6V4h6v2"/>
+        </svg>
+        Clear All
+      </button>
+    </div>
+
+  </div>
   <script type="module" src="popup.js"></script>
 </body>
 </html>
-

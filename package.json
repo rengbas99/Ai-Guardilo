@@ -1,10 +1,10 @@
 {
   "name": "ai-guardrail",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "AI Guardrail Chrome Extension - Local PII Detection",
   "type": "module",
   "scripts": {
-    "test": "bun run extension/src/utils/detectors/detectors.test.js",
+    "test": "bun test extension/src/utils/detectors/",
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview"

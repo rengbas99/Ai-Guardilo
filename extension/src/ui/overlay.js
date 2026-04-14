@@ -19,6 +19,9 @@ const TOOLTIP_ID = 'ai-guardrail-inline-tooltip';
 let currentOverlayTarget = null;
 const overlayRegistry = new WeakMap();
 
+let _hideTimer = null;
+let _tooltipHovered = false;
+
 function syncPosition(overlay, targetElement) {
   if (!overlay || !targetElement || !document.body.contains(targetElement)) return;
   const r = targetElement.getBoundingClientRect();
@@ -59,29 +62,38 @@ function getOrCreateOverlay(inputElement) {
   `;
   document.body.appendChild(overlay);
 
-  const sync = () => syncPosition(overlay, inputElement);
+  // Sync overlay bounds AND re-render underlines so they track scrolled Range rects.
+  // Without re-rendering, underlines drift because their absolute offsets are baked
+  // in from Range.getClientRects() at last-render time, not current scroll position.
+  const syncAndRender = () => {
+    syncPosition(overlay, inputElement);
+    const s = stateByElement.get(inputElement);
+    if (s?.riskRanges?.length > 0) {
+      renderRectOverlays(inputElement, s.riskRanges);
+    }
+  };
 
-  const resizeObs = new ResizeObserver(sync);
+  const resizeObs = new ResizeObserver(syncAndRender);
   resizeObs.observe(inputElement);
 
   const intersectObs = new IntersectionObserver((entries) => {
     if (entries[0]) {
       overlay.style.display = entries[0].isIntersecting ? 'block' : 'none';
-      sync();
+      syncAndRender();
     }
   }, { threshold: 0, rootMargin: '20px' });
   intersectObs.observe(inputElement);
 
-  window.addEventListener('scroll', sync, { passive: true, capture: true });
-  window.addEventListener('resize', sync);
-  sync();
+  window.addEventListener('scroll', syncAndRender, { passive: true, capture: true });
+  window.addEventListener('resize', syncAndRender);
+  syncAndRender();
 
   overlayRegistry.set(inputElement, {
     el: overlay,
     resizeObs,
     intersectObs,
-    onScroll: sync,
-    onResize: sync,
+    onScroll: syncAndRender,
+    onResize: syncAndRender,
   });
 
   return overlay;
@@ -173,83 +185,95 @@ export function injectHighlightCSS() {
       position: fixed;
       z-index: 2147483647;
       display: none;
-      min-width: 240px;
+      min-width: 280px;
       max-width: min(420px, calc(100vw - 24px));
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       pointer-events: auto;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: white;
     }
 
     #${TOOLTIP_ID} .ag-header {
-      background: #1f2937;
-      color: #f3f4f6;
-      padding: 8px 12px;
+      background: rgba(220, 38, 38, 0.15);
+      color: #fff;
+      padding: 10px 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
     #${TOOLTIP_ID} .ag-body {
-      background: #fff;
-      color: #374151;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-top: none;
-      font-size: 12px;
+      padding: 14px;
+      font-size: 13px;
     }
 
     #${TOOLTIP_ID} .ag-sub {
       font-size: 11px;
-      color: #6b7280;
-      margin-bottom: 8px;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
 
     #${TOOLTIP_ID} .ag-preview {
-      margin-bottom: 10px;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      margin-bottom: 14px;
+      background: rgba(0,0,0,0.2);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-family: ui-monospace, 'Source Code Pro', monospace;
+      font-size: 12px;
+      line-height: 1.4;
     }
 
     #${TOOLTIP_ID} .ag-old {
-      color: #dc2626;
+      color: #ef4444;
       text-decoration: line-through;
+      opacity: 0.8;
     }
 
     #${TOOLTIP_ID} .ag-new {
-      color: #2563eb;
-      font-weight: 600;
-      word-break: break-word;
+      color: #10b981;
+      font-weight: 700;
     }
 
     #${TOOLTIP_ID} .ag-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
     }
 
     #${TOOLTIP_ID} button {
       border: none;
+      outline: none !important;
       border-radius: 8px;
-      font-size: 11px;
+      font-size: 12px;
+      font-weight: 700;
       cursor: pointer;
-      padding: 6px 12px;
+      padding: 8px 16px;
+      transition: all 0.2s ease;
     }
 
     #${TOOLTIP_ID} .ag-update {
       background: #10b981;
       color: #fff;
-      font-weight: 700;
+      flex: 1;
     }
+    #${TOOLTIP_ID} .ag-update:hover { background: #059669; }
 
     #${TOOLTIP_ID} .ag-dismiss {
-      background: transparent;
-      color: #6b7280;
-      padding-left: 8px;
-      padding-right: 8px;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
     }
+    #${TOOLTIP_ID} .ag-dismiss:hover { background: rgba(255,255,255,0.15); color: #fff; }
   `;
   document.head.appendChild(style);
 }
@@ -277,7 +301,9 @@ function getOrCreateMirror(textarea) {
   mirror.style.color = 'transparent';
   mirror.style.background = 'transparent';
   mirror.style.pointerEvents = 'none';
-  mirror.style.zIndex = String((parseInt(styles.zIndex) || 0) - 1);
+  // Must be ABOVE the textarea (not below) so underlines are visible;
+  // pointer-events: none ensures the mirror doesn't intercept user interaction.
+  mirror.style.zIndex = String((parseInt(styles.zIndex) || 0) + 1);
   mirror.style.overflow = 'hidden';
   mirror.setAttribute('aria-hidden', 'true');
 
@@ -324,6 +350,9 @@ function renderMirrorContent(mirror, fullText, risks) {
 
 function renderRectOverlays(inputElement, riskRanges) {
   const overlay = getOrCreateOverlay(inputElement);
+  // Force-sync overlay position before computing offsets — prevents "floating"
+  // when the overlay was created before the editor finished laying out.
+  syncPosition(overlay, inputElement);
   const inputRect = inputElement.getBoundingClientRect();
 
   overlay.replaceChildren();
@@ -398,6 +427,16 @@ export function highlightRisks(inputElement, risks, fullText = '', textIndex = n
     riskRanges.push({ risk, range });
   }
 
+  if (riskRanges.length === 0) return [];
+
+  // Prefer CSS Custom Highlight API — browser paints underlines as part of the text,
+  // so they track scroll/resize/reflow automatically. No floating possible.
+  if (supportsHighlights()) {
+    CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(...riskRanges.map(rr => rr.range)));
+    return riskRanges;
+  }
+
+  // Fallback: rect overlay divs (re-synced by scroll/resize observers)
   renderRectOverlays(inputElement, riskRanges);
   return riskRanges;
 }
@@ -426,11 +465,27 @@ function ensureTooltipEl() {
     </div>
   `;
 
+  tooltip.addEventListener('mouseenter', () => {
+    _tooltipHovered = true;
+    clearTimeout(_hideTimer);
+    _hideTimer = null;
+  });
+  tooltip.addEventListener('mouseleave', () => {
+    _tooltipHovered = false;
+    clearTimeout(_hideTimer);
+    _hideTimer = setTimeout(() => {
+      if (!_tooltipHovered) hideTooltip();
+    }, 300);
+  });
+
   document.body.appendChild(tooltip);
   return tooltip;
 }
 
 function hideTooltip() {
+  clearTimeout(_hideTimer);
+  _hideTimer = null;
+  _tooltipHovered = false;
   const tooltip = document.getElementById(TOOLTIP_ID);
   if (tooltip) tooltip.style.display = 'none';
 }
@@ -482,7 +537,22 @@ function attachElementListeners(inputElement) {
     hideTooltip();
   };
 
-  const onMouseLeave = () => hideTooltip();
+  // Re-render rect underlines when the editor internally scrolls (long text).
+  // Not needed when CSS Highlight API is active — the browser tracks ranges natively.
+  const onContentScroll = () => {
+    if (supportsHighlights()) return;
+    const s = stateByElement.get(inputElement);
+    if (s && s.riskRanges && s.riskRanges.length > 0) {
+      renderRectOverlays(inputElement, s.riskRanges);
+    }
+  };
+
+  const onMouseLeave = () => {
+    clearTimeout(_hideTimer);
+    _hideTimer = setTimeout(() => {
+      if (!_tooltipHovered) hideTooltip();
+    }, 300);
+  };
 
   const onMouseMove = throttle((e) => {
     const s = stateByElement.get(inputElement);
@@ -510,9 +580,16 @@ function attachElementListeners(inputElement) {
     }
 
     if (!hovered) {
-      hideTooltip();
+      if (!_hideTimer) {
+        _hideTimer = setTimeout(() => {
+          if (!_tooltipHovered) hideTooltip();
+        }, 300);
+      }
       return;
     }
+
+    clearTimeout(_hideTimer);
+    _hideTimer = null;
 
     const tooltip = ensureTooltipEl();
     const risk = hovered.rr.risk;
@@ -568,10 +645,12 @@ function attachElementListeners(inputElement) {
   }, 80);
 
   inputElement.addEventListener('input', onInput);
+  inputElement.addEventListener('scroll', onContentScroll, { passive: true });
   inputElement.addEventListener('mousemove', onMouseMove);
   inputElement.addEventListener('mouseleave', onMouseLeave);
 
   state.onInput = onInput;
+  state.onContentScroll = onContentScroll;
   state.onMouseMove = onMouseMove;
   state.onMouseLeave = onMouseLeave;
   stateByElement.set(inputElement, state);
@@ -582,6 +661,7 @@ function detachElementListeners(inputElement) {
   if (!inputElement || !state || !state.listenersAttached) return;
 
   inputElement.removeEventListener('input', state.onInput);
+  inputElement.removeEventListener('scroll', state.onContentScroll);
   inputElement.removeEventListener('mousemove', state.onMouseMove);
   inputElement.removeEventListener('mouseleave', state.onMouseLeave);
 
@@ -641,6 +721,20 @@ export function showInlineSuggestions(scanId, risks, fullText, source, filename,
     onRescan,
     updateLog,
     placeholderMap,
+  });
+
+  // After paste, editors like ProseMirror/ChatGPT may still be reflowing (auto-growing).
+  // Re-render rect overlays after two animation frames to pick up settled positions.
+  // Not needed for CSS Highlight API — its ranges are live DOM objects.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (isScanStale(scanId) || !document.body.contains(inputElement)) return;
+      if (supportsHighlights()) return;
+      const s = stateByElement.get(inputElement);
+      if (s?.riskRanges?.length > 0) {
+        renderRectOverlays(inputElement, s.riskRanges);
+      }
+    });
   });
 }
 

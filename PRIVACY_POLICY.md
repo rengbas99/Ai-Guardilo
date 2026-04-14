@@ -1,8 +1,8 @@
 # AI Guardrail – Privacy Policy
 
-**Last updated:** March 2025  
+**Last updated:** April 2026  
 **Extension name:** AI Guardrail  
-**Version:** 1.0.0
+**Version:** 1.0.4
 
 ---
 
@@ -90,16 +90,13 @@ The extension **does not** use any cloud API, OpenRouter, or other external serv
 
 ## 4. Permissions and Why We Need Them
 
-| Permission | Purpose |
-|------------|---------|
-| **activeTab** | Allows the extension to interact with the active tab (e.g. to find the chat input and apply redactions) |
 | **storage** | Stores risk logs, stats, and settings locally. Required for the popup dashboard and “Clear Logs” / “Export DSAR” features |
 | **clipboardWrite** | When you click “Update,” the redacted text is copied to your clipboard so you can paste it if the editor does not accept programmatic replacement |
 
 We do **not** request:
 
 - `host_permissions` for external APIs (we do not call any)
-- `tabs` (we use `activeTab` only when you interact)
+- `tabs` (we operate via content scripts on specific matches)
 - `webRequest` or network interception
 
 ---
